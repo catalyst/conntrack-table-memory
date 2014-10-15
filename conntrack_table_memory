@@ -28,7 +28,7 @@ if __name__ == "__main__":
         nf_conntrack_struct_size = nfct.nfct_maxsize() # newer way to obtain the size
     except:
         try:
-            nf_conntrack_struct_size = nfct.nfct_maxsize() # older way
+            nf_conntrack_struct_size = nfct.nfct_sizeof() # older way
         except:
             sys.stderr.write("error: could not determine sizeof nf_conntrack struct\n")
             sys.exit(1)
