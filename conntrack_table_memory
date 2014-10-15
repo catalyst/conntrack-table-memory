@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+"""
+Given a particular memory size, examine the size of the nf_conntrack
+struct and determine how to set nf_conntrack_max appropriately. Also
+outputs the recommended hashsize parameter for the nf_conntrack module.
+
+Michael Fincham <michael.fincham@catalyst.net.nz>
+"""
+
+import ctypes
+import argparse
+import sys
+import math
+
+LIBNETFILTER_CONNTRACK = 'libnetfilter_conntrack.so'
+KERNEL_HASHSIZE_TO_CONNTRACK_MAX_RATIO = 8
+
+if __name__ == "__main__":
+
+    try: # load the library
+        nfct = ctypes.CDLL(LIBNETFILTER_CONNTRACK)
+    except:
+        sys.stderr.write("error: could not load %s, is libnetfilter-conntrack-dev installed?\n" % LIBNETFILTER_CONNTRACK)
+        sys.exit(1)
+
+    try:
+        nf_conntrack_struct_size = nfct.nfct_maxsize() # newer way to obtain the size
+    except:
+        try:
+            nf_conntrack_struct_size = nfct.nfct_maxsize() # older way
+        except:
+            sys.stderr.write("error: could not determine sizeof nf_conntrack struct\n")
+            sys.exit(1)
+
+    doubly_linked_list_struct_size = ctypes.sizeof(ctypes.c_void_p) * 2
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mebibytes', type=int, help='desired maximum kernel memory consumption in MiB')
+    parser.add_argument('--output', choices=('conntrack_max', 'hashsize'), help='output just the requested value and nothing else')
+    args = parser.parse_args()
+
+    conntrack_max = (args.mebibytes * 1024 * 1024) / (nf_conntrack_struct_size + doubly_linked_list_struct_size / KERNEL_HASHSIZE_TO_CONNTRACK_MAX_RATIO)
+    hash_size = math.ceil((conntrack_max + 0.0) / KERNEL_HASHSIZE_TO_CONNTRACK_MAX_RATIO)
+
+    if args.output == 'hashsize':
+        sys.stdout.write('%i\n' % hash_size)
+        sys.exit(0)
+    elif args.output == 'conntrack_max':
+        sys.stdout.write('%i\n' % conntrack_max)
+        sys.exit(0)
+    else:
+        sys.stdout.write("On this machine, each conntrack entry requires %i bytes of kernel memory, and each hash table entry requires %i.\n\n" % (nf_conntrack_struct_size, doubly_linked_list_struct_size))
+        sys.stdout.write("Therefore to consume a maximum of %i MiB of kernel memory:\n" % args.mebibytes)
+        sys.stdout.write(" - conntrack_max should be set to %i\n" % conntrack_max)
+        sys.stdout.write(" - Using the kernel's default ratio, the nf_conntrack module's `hashsize' parameter should be set to %i\n" % hash_size)
+        sys.exit(0)
